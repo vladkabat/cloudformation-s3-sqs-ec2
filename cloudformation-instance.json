@@ -1,0 +1,213 @@
+{
+	"AWSTemplateFormatVersion": "2010-09-09",
+	"Resources": {
+		"s3reportstorage": {
+			"Type": "AWS::S3::Bucket",
+			"Properties": {
+				"BucketName": "bucket-s3reportstorage",
+				"LifecycleConfiguration": {
+					"Rules": [
+						{
+							"Id": "RetentionPolicy",
+							"Status": "Enabled",
+							"ExpirationInDays": 3
+						}
+					]
+				}
+			}
+		},
+		"s3inputstorage": {
+			"Type": "AWS::S3::Bucket",
+			"Properties": {
+				"BucketName": "bucket-s3inputstorage",
+				"LifecycleConfiguration": {
+					"Rules": [
+						{
+							"Id": "RetentionPolicy",
+							"Status": "Enabled",
+							"ExpirationInDays": 3
+						}
+					]
+				},
+				"InventoryConfigurations": [
+					{
+						"Destination": {
+							"BucketAccountId": "681674504299",
+							"BucketArn": "arn:aws:s3:::bucket-s3reportstorage",
+							"Format": "ORC"
+						},
+						"Enabled": true,
+						"Id": "InventoryConfiguration-s3inputstorage-s3reportstorage",
+						"IncludedObjectVersions": "All",
+						"OptionalFields": [
+							"Size",
+							"LastModifiedDate",
+							"StorageClass",
+							"ETag",
+							"IsMultipartUploaded",
+							"ReplicationStatus",
+							"ObjectLockRetainUntilDate",
+							"ObjectLockMode",
+							"ObjectLockLegalHoldStatus",
+							"IntelligentTieringAccessTier"
+						],
+						"ScheduleFrequency": "Daily"
+					}
+				]
+			}
+		},
+		"s3contentstorage": {
+			"Type": "AWS::S3::Bucket",
+			"Properties": {
+				"BucketName": "bucket-s3contentstorage",
+				"LifecycleConfiguration": {
+					"Rules": [
+						{
+							"Id": "RetentionPolicy",
+							"Status": "Enabled",
+							"ExpirationInDays": 3
+						}
+					]
+				}
+			}
+		},
+		"BucketPolicyS3reportstorage": {
+			"Type": "AWS::S3::BucketPolicy",
+			"Properties": {
+				"Bucket": {
+					"Ref": "s3reportstorage"
+				},
+				"PolicyDocument": {
+					"Statement": [
+						{
+							"Action": [
+								"s3:PutObject"
+							],
+							"Effect": "Allow",
+							"Resource": [
+								{
+									"Fn::Join": [
+										"",
+										[
+											"arn:aws:s3:::",
+											{
+												"Ref": "s3reportstorage"
+											},
+											"/*"
+										]
+									]
+								}
+							],
+							"Principal": {
+								"Service": "s3.amazonaws.com"
+							},
+							"Condition": {
+								"ArnLike": {
+									"aws:SourceArn": [
+										{
+											"Fn::Join": [
+												"",
+												[
+													"arn:aws:s3:::",
+													{
+														"Ref": "s3inputstorage"
+													}
+												]
+											]
+										}
+									]
+								},
+								"StringEquals": {
+									"aws:SourceAccount": [
+										"681674504299"
+									],
+									"s3:x-amz-acl": "bucket-owner-full-control"
+								}
+							}
+						}
+					]
+				}
+			}
+		},
+		"QueueS3inputstorage": {
+			"Type": "AWS::SQS::Queue",
+			"Properties": {
+				"QueueName": "QueueBucket-s3inputstorage"
+			}
+		},
+		"QueuePolicyS3inputstorage": {
+			"Type": "AWS::SQS::QueuePolicy",
+			"Properties": {
+				"Queues": [
+					{
+						"Ref": "QueueS3inputstorage"
+					}
+				],
+				"PolicyDocument": {
+					"Statement": [
+						{
+							"Action": [
+								"SQS:SendMessage"
+							],
+							"Effect": "Allow",
+							"Resource": "arn:aws:sqs:us-east-1:681674504299:QueueBucket-s3inputstorage",
+							"Principal": {
+								"Service": "s3.amazonaws.com"
+							},
+							"Condition": {
+								"ArnLike": {
+									"aws:SourceArn": [
+										{
+											"Fn::Join": [
+												"",
+												[
+													"arn:aws:s3:::",
+													{
+														"Ref": "s3inputstorage"
+													}
+												]
+											]
+										}
+									]
+								}
+							}
+						}
+					]
+				}
+			}
+		},
+		"EC2Instanse": {
+			"Type": "AWS::EC2::Instance",
+			"Properties": {
+				"InstanceType": "t2.micro",
+				"ImageId": "ami-0323c3dd2da7fb37d",
+				"SecurityGroups": [
+					{
+						"Ref": "EC2InstanseSecurityGroup"
+					}
+				],
+				"KeyName": "EC2KeyPair"
+			}
+		},
+		"EC2InstanseSecurityGroup": {
+			"Type": "AWS::EC2::SecurityGroup",
+			"Properties": {
+				"GroupDescription": "Allow http to client host",
+				"SecurityGroupIngress": [
+					{
+						"IpProtocol": "tcp",
+						"FromPort": 27017,
+						"ToPort": 27017,
+						"CidrIp": "0.0.0.0/0"
+					},
+					{
+						"IpProtocol": "tcp",
+						"FromPort": 22,
+						"ToPort": 22,
+						"CidrIp": "0.0.0.0/0"
+					}
+				]
+			}
+		}
+	}
+}
